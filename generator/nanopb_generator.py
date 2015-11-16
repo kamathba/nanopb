@@ -480,19 +480,24 @@ class Field:
         result += '%s, ' % (prev_field_name or self.name)
 
         if self.pbtype == 'MESSAGE':
-            result += '&%s_fields)' % self.submsgname
+            result += '&%s_fields, ' % self.submsgname
         elif self.default is None:
-            result += '0)'
+            result += '0, '
         elif self.pbtype in ['BYTES', 'STRING'] and self.allocation != 'STATIC':
-            result += '0)' # Arbitrary size default values not implemented
+            result += '0, ' # Arbitrary size default values not implemented
         elif self.rules == 'OPTEXT':
-            result += '0)' # Default value for extensions is not implemented
+            result += '0, ' # Default value for extensions is not implemented
         else:
-            result += '&%s_default)' % (self.struct_name + self.name)
+            result += '&%s_default, ' % (self.struct_name + self.name)
 
+        result += '%s)' % self.get_json_name()
         return result
 
     def get_last_field_name(self):
+        return self.name
+
+    def get_json_name(self):
+        # camelCase
         return self.name
 
     def largest_field_value(self):

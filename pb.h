@@ -37,6 +37,9 @@
 /* Disable support for custom streams (support only memory buffers). */
 /* #define PB_BUFFER_ONLY 1 */
 
+/* Enable support for JSON Encoding and Decoding
+/* #define PB_JSON_ENABLE 1 */
+
 /* Switch back to the old-style callback function signature.
  * This was the default until nanopb-0.2.1. */
 /* #define PB_OLD_CALLBACK_STYLE */
@@ -236,6 +239,9 @@ struct pb_field_s {
      * OR default value for all other non-array, non-callback types
      * If null, then field will zeroed. */
     const void *ptr;
+#ifdef PB_JSON_ENABLED
+    const char *name;
+#ifdef PB_JSON_ENABLED
 } pb_packed;
 PB_PACKED_STRUCT_END
 
@@ -301,8 +307,7 @@ struct pb_callback_s {
         bool (*decode)(pb_istream_t *stream, const pb_field_t *field, void **arg);
         bool (*encode)(pb_ostream_t *stream, const pb_field_t *field, void * const *arg);
     } funcs;
-#endif    
-    
+#endif
     /* Free arg for use by callback */
     void *arg;
 };
@@ -378,6 +383,12 @@ struct pb_extension_s {
 /* This is used to inform about need to regenerate .pb.h/.pb.c files. */
 #define PB_PROTO_HEADER_VERSION 30
 
+#ifdef PB_ENABLE_JSON
+#define pb_cleanup_field_args(ptr, name)(ptr, name) ptr, name
+#else
+#define pb_cleanup_field_args(ptr, name)(ptr, name) ptr
+#endif
+
 /* These macros are used to declare pb_field_t's in the constant array. */
 /* Size of a structure member, in bytes. */
 #define pb_membersize(st, m) (sizeof ((st*)0)->m)
@@ -386,7 +397,7 @@ struct pb_extension_s {
 /* Delta from start of one member to the start of another member. */
 #define pb_delta(st, m1, m2) ((int)offsetof(st, m1) - (int)offsetof(st, m2))
 /* Marks the end of the field list */
-#define PB_LAST_FIELD {0,(pb_type_t) 0,0,0,0,0,0}
+#define PB_LAST_FIELD {0,(pb_type_t) 0,0,0,0,0,pb_cleanup_field_args(0,0)}
 
 /* Macros for filling in the data_offset field */
 /* data_offset for first field in a message */
@@ -402,66 +413,66 @@ struct pb_extension_s {
  * previous field end, and the size of the field. Pointer is used for
  * submessages and default values.
  */
-#define PB_REQUIRED_STATIC(tag, st, m, fd, ltype, ptr) \
+#define PB_REQUIRED_STATIC(tag, st, m, fd, ltype, ptr, name) \
     {tag, PB_ATYPE_STATIC | PB_HTYPE_REQUIRED | ltype, \
-    fd, 0, pb_membersize(st, m), 0, ptr}
+    fd, 0, pb_membersize(st, m), 0, pb_cleanup_field_args(ptr, name)}
 
 /* Optional fields add the delta to the has_ variable. */
-#define PB_OPTIONAL_STATIC(tag, st, m, fd, ltype, ptr) \
+#define PB_OPTIONAL_STATIC(tag, st, m, fd, ltype, ptr, name) \
     {tag, PB_ATYPE_STATIC | PB_HTYPE_OPTIONAL | ltype, \
     fd, \
     pb_delta(st, has_ ## m, m), \
-    pb_membersize(st, m), 0, ptr}
+    pb_membersize(st, m), 0, pb_cleanup_field_args(ptr, name)}
 
 /* Repeated fields have a _count field and also the maximum number of entries. */
-#define PB_REPEATED_STATIC(tag, st, m, fd, ltype, ptr) \
+#define PB_REPEATED_STATIC(tag, st, m, fd, ltype, ptr, name) \
     {tag, PB_ATYPE_STATIC | PB_HTYPE_REPEATED | ltype, \
     fd, \
     pb_delta(st, m ## _count, m), \
     pb_membersize(st, m[0]), \
-    pb_arraysize(st, m), ptr}
+    pb_arraysize(st, m), pb_cleanup_field_args(ptr, name)}
 
 /* Allocated fields carry the size of the actual data, not the pointer */
-#define PB_REQUIRED_POINTER(tag, st, m, fd, ltype, ptr) \
+#define PB_REQUIRED_POINTER(tag, st, m, fd, ltype, ptr, name) \
     {tag, PB_ATYPE_POINTER | PB_HTYPE_REQUIRED | ltype, \
-    fd, 0, pb_membersize(st, m[0]), 0, ptr}
+    fd, 0, pb_membersize(st, m[0]), 0, pb_cleanup_field_args(ptr, name)}
 
 /* Optional fields don't need a has_ variable, as information would be redundant */
-#define PB_OPTIONAL_POINTER(tag, st, m, fd, ltype, ptr) \
+#define PB_OPTIONAL_POINTER(tag, st, m, fd, ltype, ptr, name) \
     {tag, PB_ATYPE_POINTER | PB_HTYPE_OPTIONAL | ltype, \
-    fd, 0, pb_membersize(st, m[0]), 0, ptr}
+    fd, 0, pb_membersize(st, m[0]), 0, pb_cleanup_field_args(ptr, name)}
 
 /* Repeated fields have a _count field and a pointer to array of pointers */
-#define PB_REPEATED_POINTER(tag, st, m, fd, ltype, ptr) \
+#define PB_REPEATED_POINTER(tag, st, m, fd, ltype, ptr, name) \
     {tag, PB_ATYPE_POINTER | PB_HTYPE_REPEATED | ltype, \
     fd, pb_delta(st, m ## _count, m), \
-    pb_membersize(st, m[0]), 0, ptr}
+    pb_membersize(st, m[0]), 0, pb_cleanup_field_args(ptr, name)}
 
 /* Callbacks are much like required fields except with special datatype. */
-#define PB_REQUIRED_CALLBACK(tag, st, m, fd, ltype, ptr) \
+#define PB_REQUIRED_CALLBACK(tag, st, m, fd, ltype, ptr, name) \
     {tag, PB_ATYPE_CALLBACK | PB_HTYPE_REQUIRED | ltype, \
-    fd, 0, pb_membersize(st, m), 0, ptr}
+    fd, 0, pb_membersize(st, m), 0, pb_cleanup_field_args(ptr, name)}
 
-#define PB_OPTIONAL_CALLBACK(tag, st, m, fd, ltype, ptr) \
+#define PB_OPTIONAL_CALLBACK(tag, st, m, fd, ltype, ptr, name) \
     {tag, PB_ATYPE_CALLBACK | PB_HTYPE_OPTIONAL | ltype, \
-    fd, 0, pb_membersize(st, m), 0, ptr}
+    fd, 0, pb_membersize(st, m), 0, pb_cleanup_field_args(ptr, name)}
     
-#define PB_REPEATED_CALLBACK(tag, st, m, fd, ltype, ptr) \
+#define PB_REPEATED_CALLBACK(tag, st, m, fd, ltype, ptr, name) \
     {tag, PB_ATYPE_CALLBACK | PB_HTYPE_REPEATED | ltype, \
-    fd, 0, pb_membersize(st, m), 0, ptr}
+    fd, 0, pb_membersize(st, m), 0, pb_cleanup_field_args(ptr, name)}
 
 /* Optional extensions don't have the has_ field, as that would be redundant. */
-#define PB_OPTEXT_STATIC(tag, st, m, fd, ltype, ptr) \
+#define PB_OPTEXT_STATIC(tag, st, m, fd, ltype, ptr, name) \
     {tag, PB_ATYPE_STATIC | PB_HTYPE_OPTIONAL | ltype, \
     0, \
     0, \
-    pb_membersize(st, m), 0, ptr}
+    pb_membersize(st, m), 0, pb_cleanup_field_args(ptr, name)}
 
-#define PB_OPTEXT_POINTER(tag, st, m, fd, ltype, ptr) \
-    PB_OPTIONAL_POINTER(tag, st, m, fd, ltype, ptr)
+#define PB_OPTEXT_POINTER(tag, st, m, fd, ltype, ptr, name) \
+    PB_OPTIONAL_POINTER(tag, st, m, fd, ltype, ptr, name)
 
-#define PB_OPTEXT_CALLBACK(tag, st, m, fd, ltype, ptr) \
-    PB_OPTIONAL_CALLBACK(tag, st, m, fd, ltype, ptr)
+#define PB_OPTEXT_CALLBACK(tag, st, m, fd, ltype, ptr, name) \
+    PB_OPTIONAL_CALLBACK(tag, st, m, fd, ltype, ptr, name)
 
 /* The mapping from protobuf types to LTYPEs is done using these macros. */
 #define PB_LTYPE_MAP_BOOL       PB_LTYPE_VARINT
@@ -499,43 +510,43 @@ struct pb_extension_s {
  * - Pointer to default value or submsg fields.
  */
 
-#define PB_FIELD(tag, type, rules, allocation, placement, message, field, prevfield, ptr) \
+#define PB_FIELD(tag, type, rules, allocation, placement, message, field, prevfield, ptr, name) \
         PB_ ## rules ## _ ## allocation(tag, message, field, \
         PB_DATAOFFSET_ ## placement(message, field, prevfield), \
-        PB_LTYPE_MAP_ ## type, ptr)
+        PB_LTYPE_MAP_ ## type, ptr, name)
 
 /* Field description for oneof fields. This requires taking into account the
  * union name also, that's why a separate set of macros is needed.
  */
-#define PB_ONEOF_STATIC(u, tag, st, m, fd, ltype, ptr) \
+#define PB_ONEOF_STATIC(u, tag, st, m, fd, ltype, ptr, name) \
     {tag, PB_ATYPE_STATIC | PB_HTYPE_ONEOF | ltype, \
     fd, pb_delta(st, which_ ## u, u.m), \
-    pb_membersize(st, u.m), 0, ptr}
+    pb_membersize(st, u.m), 0, pb_cleanup_field_args(ptr, name)}
 
-#define PB_ONEOF_POINTER(u, tag, st, m, fd, ltype, ptr) \
+#define PB_ONEOF_POINTER(u, tag, st, m, fd, ltype, ptr, name) \
     {tag, PB_ATYPE_POINTER | PB_HTYPE_ONEOF | ltype, \
     fd, pb_delta(st, which_ ## u, u.m), \
-    pb_membersize(st, u.m[0]), 0, ptr}
+    pb_membersize(st, u.m[0]), 0, pb_cleanup_field_args(ptr, name)}
 
-#define PB_ONEOF_FIELD(union_name, tag, type, rules, allocation, placement, message, field, prevfield, ptr) \
+#define PB_ONEOF_FIELD(union_name, tag, type, rules, allocation, placement, message, field, prevfield, ptr, name) \
         PB_ONEOF_ ## allocation(union_name, tag, message, field, \
         PB_DATAOFFSET_ ## placement(message, union_name.field, prevfield), \
-        PB_LTYPE_MAP_ ## type, ptr)
+        PB_LTYPE_MAP_ ## type, ptr, name)
 
-#define PB_ANONYMOUS_ONEOF_STATIC(u, tag, st, m, fd, ltype, ptr) \
+#define PB_ANONYMOUS_ONEOF_STATIC(u, tag, st, m, fd, ltype, ptr, name) \
     {tag, PB_ATYPE_STATIC | PB_HTYPE_ONEOF | ltype, \
     fd, pb_delta(st, which_ ## u, m), \
-    pb_membersize(st, m), 0, ptr}
+    pb_membersize(st, m), 0, pb_cleanup_field_args(ptr, name)}
 
-#define PB_ANONYMOUS_ONEOF_POINTER(u, tag, st, m, fd, ltype, ptr) \
+#define PB_ANONYMOUS_ONEOF_POINTER(u, tag, st, m, fd, ltype, ptr, name) \
     {tag, PB_ATYPE_POINTER | PB_HTYPE_ONEOF | ltype, \
     fd, pb_delta(st, which_ ## u, m), \
-    pb_membersize(st, m[0]), 0, ptr}
+    pb_membersize(st, m[0]), 0, pb_cleanup_field_args(ptr, name)}
 
-#define PB_ANONYMOUS_ONEOF_FIELD(union_name, tag, type, rules, allocation, placement, message, field, prevfield, ptr) \
+#define PB_ANONYMOUS_ONEOF_FIELD(union_name, tag, type, rules, allocation, placement, message, field, prevfield, ptr, name) \
         PB_ANONYMOUS_ONEOF_ ## allocation(union_name, tag, message, field, \
         PB_DATAOFFSET_ ## placement(message, field, prevfield), \
-        PB_LTYPE_MAP_ ## type, ptr)
+        PB_LTYPE_MAP_ ## type, ptr, name)
 
 /* These macros are used for giving out error messages.
  * They are mostly a debugging aid; the main error information
