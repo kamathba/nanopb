@@ -5,7 +5,11 @@
 NANOPB_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))../)
 
 # Files for the nanopb core
-NANOPB_CORE = $(NANOPB_DIR)/pb_encode.c $(NANOPB_DIR)/pb_decode.c $(NANOPB_DIR)/pb_common.c
+NANOPB_CORE = $(addprefix $(NANOPB_DIR)/, \
+  pb_encode.c \
+  pb_decode.c \
+  pb_common.c \
+  thirdparty/jsmn.c
 
 # Check if we are running on Windows
 ifdef windir
