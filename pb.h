@@ -42,7 +42,7 @@
 /* #define PB_OLD_CALLBACK_STYLE */
 
 /* Turn off support for encoding to/from canonical json */
-#define PB_NO_JSON 1
+// #define PB_NO_JSON 1
 /* #define PB_JSON_DEFAULT_FORMATTING 1 */
 /* #define PB_JSON_STRICT */
 
@@ -82,8 +82,18 @@
 #endif
 #endif
 
-/* Macro for defining API as DLL*/
+#ifndef NANOPB_API
+/**
+ * We require a NANOPB_DLL so that users already using this as a static
+ * or embedded library don't get confused
+ */
+#if defined(_WIN32) && defined(NANOPB_DLL)
+#define NANOPB_API __declspec(dllexport)
+#else
 #define NANOPB_API
+#endif /* _WIN32 */
+
+#endif /* #ifndef NANOPB_API */
 
 /* Macro for defining packed structures (compiler dependent).
  * This just reduces memory requirements, but is not required.
@@ -206,6 +216,7 @@ enum PB_LTYPE {
 #define PB_ATYPE(x) ((x) & PB_ATYPE_MASK)
 #define PB_HTYPE(x) ((x) & PB_HTYPE_MASK)
 #define PB_LTYPE(x) ((x) & PB_LTYPE_MASK)
+#define PB_JTYPE(x) ((x) & PB_JTYPE_MASK)
 
 /* Data type used for storing sizes of struct fields
  * and array counts.
@@ -400,14 +411,17 @@ struct pb_extension_s {
 #endif
 
 /* This is used to inform about need to regenerate .pb.h/.pb.c files. */
-#define PB_PROTO_HEADER_VERSION 30
+#define PB_PROTO_HEADER_VERSION 31
 
 /* Helper macro to stringify a macro post-expansion */
 #define pb_str(x) #x
 
 /* This macro will allow you to turn on/off json decoding and
  * encoding without regenerating the .pb.c/h files */
-typedef struct pb_enum_lookup_s pb_enum_lookup_t;
+typedef struct pb_enum_lookup_s {
+	int enum_val;
+	const char* name;
+} pb_enum_lookup_t;
 
 #ifndef PB_NO_JSON
 
@@ -450,7 +464,7 @@ enum PB_JTYPE {
 
 #else
 
-#define pb_fields(ptr, jtype, name) ptr
+#define pb_fields(ptr, ...) ptr
 
 #define PB_ENUM_NAMES(base) 0
 

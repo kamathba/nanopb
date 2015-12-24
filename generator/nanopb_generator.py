@@ -1073,7 +1073,7 @@ class ProtoFile:
             yield options.genformat % (noext + options.extension + '.h')
             yield '\n'
 
-        yield '#if PB_PROTO_HEADER_VERSION != 30\n'
+        yield '#if PB_PROTO_HEADER_VERSION != 31\n'
         yield '#error Regenerate this file with the current version of nanopb generator.\n'
         yield '#endif\n'
         yield '\n'
@@ -1187,7 +1187,7 @@ class ProtoFile:
         yield options.genformat % (headername)
         yield '\n'
 
-        yield '#if PB_PROTO_HEADER_VERSION != 30\n'
+        yield '#if PB_PROTO_HEADER_VERSION != 31\n'
         yield '#error Regenerate this file with the current version of nanopb generator.\n'
         yield '#endif\n'
         yield '\n'

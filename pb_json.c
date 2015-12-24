@@ -6,6 +6,10 @@
 #include "pb_json.h"
 #include "pb_common.h"
 
+#ifdef PB_NO_JSON
+#error Cannot build pb_json with PB_NO_JSON defined
+#endif
+
 #include <inttypes.h>
 
 /* Use the GCC warn_unused_result attribute to check that all return values
@@ -61,7 +65,7 @@ static const pb_json_encoder_t PB_JSON_ENCODERS[PB_LTYPES_COUNT] = {
     NULL /* extensions */
 };
 
-static const char* PB_JSON_ENCODER_STRING[PB_LTYPES_COUNT] = {
+static const char* PB_JSON_ENCODER_STRING[PB_JTYPES_COUNT] = {
 	"\"%s\": %d",
 	"\"%s\": %u",
 };

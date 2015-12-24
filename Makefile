@@ -67,5 +67,5 @@ $(BUILD)/obj/%.c.d: %.c
 %.pb.c %.pb.h: %.proto
 	@echo PROTOC $(notdir $<)
 	@echo NANOPB_GEN $(notdir $(<:.proto=.pb.c))
-	$(Q)$(PROTOC) -I$(dir $<) --plugin=protoc-gen-nanopb=generator\protoc-gen-nanopb.bat --nanopb_out=$(dir $<) $<
+	$(Q)$(PROTOC) -Igenerator/proto -I$(dir $<) --plugin=protoc-gen-nanopb=generator\protoc-gen-nanopb.bat --nanopb_out=$(dir $<) $<
 
