@@ -483,10 +483,8 @@ class Field:
         '''
 
         if self.rules == 'ONEOF':
-            if self.anonymous:
-                result = '    PB_ANONYMOUS_ONEOF_FIELD(%s, ' % self.union_name
-            else:
-                result = '    PB_ONEOF_FIELD(%s, ' % self.union_name
+            result = '    PB_ONEOF_FIELD(%s, ' % self.union_name
+            result += '%-5s, ' % ("ANON" if self.anonymous else "NAMED")
         else:
             result = '    PB_FIELD('
 

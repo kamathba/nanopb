@@ -596,37 +596,23 @@ enum PB_JTYPE {
         PB_DATAOFFSET_ ## placement(message, field, prevfield), \
         PB_LTYPE_MAP_ ## type, pb_fields(ptr, PB_JTYPE_MAP_ ## type, pb_str(field)))
 
-/* Field description for oneof fields. This requires taking into account the
- * union name also, that's why a separate set of macros is needed.
- */
-#define PB_ONEOF_STATIC(u, tag, st, m, fd, ltype, ptr) \
+/* Field description for oneof fields */
+#define PB_ONEOF_NAMED_FIELD(u, f) u.f
+#define PB_ONEOF_ANON_FIELD(u, f)  f
+
+#define PB_ONEOF_STATIC(u, anon, tag, st, m, fd, ltype, ptr) \
     {tag, PB_ATYPE_STATIC | PB_HTYPE_ONEOF | ltype, \
-    fd, pb_delta(st, which_ ## u, u.m), \
-    pb_membersize(st, u.m), 0, ptr}
+    fd, pb_delta(st, which_ ## u, PB_ONEOF_##anon##_FIELD(u, m)), \
+    pb_membersize(st, PB_ONEOF_##anon##_FIELD(u, m)), 0, ptr}
 
-#define PB_ONEOF_POINTER(u, tag, st, m, fd, ltype, ptr) \
+#define PB_ONEOF_POINTER(u, anon, tag, st, m, fd, ltype, ptr) \
     {tag, PB_ATYPE_POINTER | PB_HTYPE_ONEOF | ltype, \
-    fd, pb_delta(st, which_ ## u, u.m), \
-    pb_membersize(st, u.m[0]), 0, ptr}
+    fd, pb_delta(st, which_ ## u, PB_ONEOF_##anon##_FIELD(u, m)), \
+    pb_membersize(st, PB_ONEOF_##anon##_FIELD(u, m)[0]), 0, ptr}
 
-#define PB_ONEOF_FIELD(union_name, tag, type, rules, allocation, placement, message, field, prevfield, ptr) \
-        PB_ONEOF_ ## allocation(union_name, tag, message, field, \
-        PB_DATAOFFSET_ ## placement(message, union_name.field, prevfield), \
-        PB_LTYPE_MAP_ ## type, pb_fields(ptr, PB_JTYPE_MAP_ ## type, pb_str(field)))
-
-#define PB_ANONYMOUS_ONEOF_STATIC(u, tag, st, m, fd, ltype, ptr) \
-    {tag, PB_ATYPE_STATIC | PB_HTYPE_ONEOF | ltype, \
-    fd, pb_delta(st, which_ ## u, m), \
-    pb_membersize(st, m), 0, ptr}
-
-#define PB_ANONYMOUS_ONEOF_POINTER(u, tag, st, m, fd, ltype, ptr) \
-    {tag, PB_ATYPE_POINTER | PB_HTYPE_ONEOF | ltype, \
-    fd, pb_delta(st, which_ ## u, m), \
-    pb_membersize(st, m[0]), 0, ptr}
-
-#define PB_ANONYMOUS_ONEOF_FIELD(union_name, tag, type, rules, allocation, placement, message, field, prevfield, ptr) \
-        PB_ANONYMOUS_ONEOF_ ## allocation(union_name, tag, message, field, \
-        PB_DATAOFFSET_ ## placement(message, field, prevfield), \
+#define PB_ONEOF_FIELD(union_name, anon, tag, type, rules, allocation, placement, message, field, prevfield, ptr) \
+        PB_ONEOF_ ## allocation(union_name, anon, tag, message, field, \
+        PB_DATAOFFSET_ ## placement(message, PB_ONEOF_##anon##_FIELD(union_name, field), prevfield), \
         PB_LTYPE_MAP_ ## type, pb_fields(ptr, PB_JTYPE_MAP_ ## type, pb_str(field)))
 
 /* These macros are used for giving out error messages.
