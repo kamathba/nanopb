@@ -65,10 +65,11 @@ static const pb_json_encoder_t PB_JSON_ENCODERS[PB_LTYPES_COUNT] = {
     NULL /* extensions */
 };
 
-static const char* PB_JSON_ENCODER_STRING[PB_JTYPES_COUNT] = {
-	"\"%s\": %d",
-	"\"%s\": %u",
-};
+static bool checkreturn buf_write(pb_ostream_t *stream, const char *buf, size_t count)
+{
+	printf("%.*s", count, buf);
+    return true;
+}
 
 NANOPB_API const pb_enum_lookup_t* checkreturn pb_json_enum_lookup_by_enum(const pb_enum_lookup_t* table, int enum_val)
 {
@@ -86,6 +87,69 @@ NANOPB_API const pb_enum_lookup_t* checkreturn pb_json_enum_lookup_by_name(const
 	}
 
 	return table;
+}
+
+/*************************
+ * Encode a single field *
+ *************************/
+
+/* Encode a static array. Handles the size calculations and possible packing. */
+static bool checkreturn encode_array(pb_json_ostream_t *stream, const pb_field_t *field,
+                         const void *pData, size_t count, pb_json_encoder_t func)
+{
+    size_t i;
+    const void *p;
+    size_t size;
+
+    // [
+    if (count == 0)
+    	// ]
+        return true;
+
+    if (PB_ATYPE(field->type) != PB_ATYPE_POINTER && count > field->array_size)
+        PB_RETURN_ERROR(stream, "array max size exceeded");
+
+    /* We always pack arrays if the datatype allows it. */
+    if (PB_LTYPE(field->type) <= PB_LTYPE_LAST_PACKABLE)
+    {
+        /* Write the data */
+        p = pData;
+        for (i = 0; i < count; i++)
+        {
+            if (!func(stream, field, p))
+                return false;
+            p = (const char*)p + field->data_size;
+        }
+    }
+    else
+    {
+        p = pData;
+        for (i = 0; i < count; i++)
+        {
+            if (!pb_encode_tag_for_field(stream, field))
+                return false;
+
+            /* Normally the data is stored directly in the array entries, but
+             * for pointer-type string and bytes fields, the array entries are
+             * actually pointers themselves also. So we have to dereference once
+             * more to get to the actual data. */
+            if (PB_ATYPE(field->type) == PB_ATYPE_POINTER &&
+                (PB_LTYPE(field->type) == PB_LTYPE_STRING ||
+                 PB_LTYPE(field->type) == PB_LTYPE_BYTES))
+            {
+                if (!func(stream, field, *(const void* const*)p))
+                    return false;
+            }
+            else
+            {
+                if (!func(stream, field, p))
+                    return false;
+            }
+            p = (const char*)p + field->data_size;
+        }
+    }
+
+    return true;
 }
 
 /* Encode a field with static or pointer allocation, i.e. one whose data

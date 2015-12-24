@@ -30,7 +30,17 @@ struct pb_json_istream_s {
 };
 
 struct pb_json_ostream_s {
-
+#ifdef PB_BUFFER_ONLY
+    /* Callback pointer is not used in buffer-only configuration.
+     * Having an int pointer here allows binary compatibility but
+     * gives an error if someone tries to assign callback function.
+     * Also, NULL pointer marks a 'sizing stream' that does not
+     * write anything.
+     */
+    int *callback;
+#else
+    bool (*callback)(pb_json_ostream_t *stream, const char *buf, size_t count);
+#endif
 	struct pb_json_oformat_s format;
 
 #ifndef PB_NO_ERRMSG
