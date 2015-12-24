@@ -3,6 +3,9 @@
  * 2011 Petteri Aimonen <jpa@kapsi.fi>
  */
 
+#include "pb_decode.h"
+#include "pb_common.h"
+
 /* Use the GCC warn_unused_result attribute to check that all return values
  * are propagated correctly. On other compilers and gcc before 3.4.0 just
  * ignore the annotation.
@@ -12,10 +15,6 @@
 #else
     #define checkreturn __attribute__((warn_unused_result))
 #endif
-
-#include "pb.h"
-#include "pb_decode.h"
-#include "pb_common.h"
 
 /**************************************
  * Declarations internal to this file *
@@ -61,7 +60,7 @@ static const pb_decoder_t PB_DECODERS[PB_LTYPES_COUNT] = {
     &pb_dec_svarint,
     &pb_dec_fixed32,
     &pb_dec_fixed64,
-    
+
     &pb_dec_bytes,
     &pb_dec_string,
     &pb_dec_submessage,
@@ -623,7 +622,7 @@ static bool checkreturn decode_callback_field(pb_istream_t *stream, pb_wire_type
          * which in turn allows to use same callback for packed and
          * not-packed fields. */
         pb_istream_t substream;
-        uint8_t buffer[10];
+        uint8_t buffer[PB_WT_VARINT_MAX_SIZE_BYTES];
         size_t size = sizeof(buffer);
         
         if (!read_raw_value(stream, wire_type, buffer, &size))

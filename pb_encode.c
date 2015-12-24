@@ -3,7 +3,6 @@
  * 2011 Petteri Aimonen <jpa@kapsi.fi>
  */
 
-#include "pb.h"
 #include "pb_encode.h"
 #include "pb_common.h"
 
@@ -45,7 +44,7 @@ static const pb_encoder_t PB_ENCODERS[PB_LTYPES_COUNT] = {
     &pb_enc_svarint,
     &pb_enc_fixed32,
     &pb_enc_fixed64,
-    
+
     &pb_enc_bytes,
     &pb_enc_string,
     &pb_enc_submessage,
@@ -202,15 +201,21 @@ static bool checkreturn encode_basic_field(pb_ostream_t *stream,
     const pb_field_t *field, const void *pData)
 {
     pb_encoder_t func;
-    const void *pSize;
+
+    union {
+    	const bool* has_optional;
+    	const size_t* size_repeated;
+    	const size_t* which_oneof;
+    } atype_arg;
+
     bool implicit_has = true;
     
     func = PB_ENCODERS[PB_LTYPE(field->type)];
     
     if (field->size_offset)
-        pSize = (const char*)pData + field->size_offset;
+        atype_arg.size_repeated = (const size_t*)((const char*)pData + field->size_offset);
     else
-        pSize = &implicit_has;
+        atype_arg.has_optional = &implicit_has;
 
     if (PB_ATYPE(field->type) == PB_ATYPE_POINTER)
     {
@@ -235,7 +240,7 @@ static bool checkreturn encode_basic_field(pb_ostream_t *stream,
             break;
         
         case PB_HTYPE_OPTIONAL:
-            if (*(const bool*)pSize)
+            if (*atype_arg.has_optional)
             {
                 if (!pb_encode_tag_for_field(stream, field))
                     return false;
@@ -246,12 +251,12 @@ static bool checkreturn encode_basic_field(pb_ostream_t *stream,
             break;
         
         case PB_HTYPE_REPEATED:
-            if (!encode_array(stream, field, pData, *(const pb_size_t*)pSize, func))
+            if (!encode_array(stream, field, pData, *atype_arg.size_repeated, func))
                 return false;
             break;
         
         case PB_HTYPE_ONEOF:
-            if (*(const pb_size_t*)pSize == field->tag)
+            if (*atype_arg.which_oneof == field->tag)
             {
                 if (!pb_encode_tag_for_field(stream, field))
                     return false;
@@ -413,7 +418,7 @@ bool pb_get_encoded_size(size_t *size, const pb_field_t fields[], const void *sr
  ********************/
 bool checkreturn pb_encode_varint(pb_ostream_t *stream, uint64_t value)
 {
-    uint8_t buffer[10];
+    uint8_t buffer[PB_WT_VARINT_MAX_SIZE_BYTES];
     size_t i = 0;
     
     if (value == 0)

@@ -1,0 +1,40 @@
+enum TestEnum {
+	option allow_alias = true;
+	A = 0;
+	B = 1;
+	C = 2;
+	D = -1;
+	Absentee = 11;
+}
+
+enum Test2Enum {
+	F = 2;
+	G = 0;
+	Help = 100;
+}
+
+message Test {
+    optional uint32 test = 1;
+    oneof TestOneof {
+		bool foo = 2;
+		TestEnum blah = 11;
+    }
+    optional int32 bar = 3;
+    optional int64 a = 4;
+    optional sint32 b = 5;
+    optional sint64 c = 6;
+    optional uint32 d = 7;
+    optional fixed32 e = 8;
+    optional sfixed64 f = 9;
+    optional TestEnum test_enum = 10;
+    optional float a_float = 13;
+    optional double a_double = 14;
+    
+    message MapFieldEntry {
+    	optional uint32 key = 1;
+    	optional int32 value = 2;
+    }
+    
+//    repeated MapFieldEntry test2 = 12;
+    
+}

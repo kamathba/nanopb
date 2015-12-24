@@ -81,7 +81,7 @@ except NameError:
     strtypes = (str, )
 
 class Names:
-    '''Keeps a set of nested names and formats them to C identifier.'''
+    '''Keeps a set of nested name and formats them to C identifier.'''
     def __init__(self, parts = ()):
         if isinstance(parts, Names):
             parts = parts.parts
@@ -104,7 +104,7 @@ class Names:
 def names_from_type_name(type_name):
     '''Parse Names() from FieldDescriptorProto type_name'''
     if type_name[0] != '.':
-        raise NotImplementedError("Lookup of non-absolute type names is not supported")
+        raise NotImplementedError("Lookup of non-absolute type name is not supported")
     return Names(type_name[1:].split('.'))
 
 def varint_max_size(max_value):
@@ -164,18 +164,20 @@ class EncodedSize:
             return 2**32 - 1
 
 class Enum:
-    def __init__(self, names, desc, enum_options):
+    def __init__(self, name, desc, enum_options):
         '''desc is EnumDescriptorProto'''
 
         self.options = enum_options
-        self.names = names + desc.name
+        self.name = name + desc.name
 
         if enum_options.long_names:
-            self.values = [(self.names + x.name, x.number) for x in desc.value]
+            self.values = [(self.name + x.name, x.number) for x in desc.value]
         else:
-            self.values = [(names + x.name, x.number) for x in desc.value]
+            self.values = [(name + x.name, x.number) for x in desc.value]
 
-        self.value_longnames = [self.names + x.name for x in desc.value]
+        self.names = [x.name for x in desc.value]
+
+        self.value_longnames = [self.name + x.name for x in desc.value]
         self.packed = enum_options.packed_enum
 
     def has_negative(self):
@@ -187,18 +189,32 @@ class Enum:
     def encoded_size(self):
         return max([varint_max_size(v) for n,v in self.values])
 
+    def lookup_declaration(self):
+        result = 'extern const pb_enum_lookup_t %s_names[%d];' % (self.name, len(self.names)+1)
+        return result
+
+    def generate_name_lookup(self):
+        result = 'const pb_enum_lookup_t %s_names[%d] = {\n' % (self.name, len(self.names)+1)
+        result += '#define PB_ENUM_LOOKUP(x) { %s_##x, #x }\n' % self.name
+        result += ',\n'.join(["    PB_ENUM_LOOKUP(%s)" % x for x in self.names])
+        result += ',\n    PB_LAST_ENUM_LOOKUP'
+        result += '\n#undef PB_ENUM_LOOKUP'
+        result += '\n};'
+
+        return result
+
     def __str__(self):
-        result = 'typedef enum _%s {\n' % self.names
+        result = 'typedef enum _%s {\n' % self.name
         result += ',\n'.join(["    %s = %d" % x for x in self.values])
         result += '\n}'
 
         if self.packed:
             result += ' pb_packed'
 
-        result += ' %s;' % self.names
+        result += ' %s;' % self.name
 
         if not self.options.long_names:
-            # Define the long names always so that enum value references
+            # Define the long name always so that enum value references
             # from other files work properly.
             for i, x in enumerate(self.values):
                 result += '\n#define %s %s' % (self.value_longnames[i], x[0])
@@ -362,7 +378,7 @@ class Field:
         return result
 
     def get_dependencies(self):
-        '''Get list of type names used by this field.'''
+        '''Get list of type name used by this field.'''
         if self.allocation == 'STATIC':
             return [str(self.ctype)]
         else:
@@ -385,7 +401,7 @@ class Field:
                 inner_init = '""'
             elif self.pbtype == 'BYTES':
                 inner_init = '{0, {0}}'
-            elif self.pbtype in ('ENUM', 'UENUM'):
+            elif self.pbtype in ['ENUM', 'UENUM']:
                 inner_init = '(%s)0' % self.ctype
             else:
                 inner_init = '0'
@@ -485,6 +501,8 @@ class Field:
 
         if self.pbtype == 'MESSAGE':
             result += '&%s_fields)' % self.submsgname
+        elif self.pbtype in ['ENUM', 'UENUM']:
+            result += 'PB_ENUM_NAMES(%s))' % self.ctype
         elif self.default is None:
             result += '0)'
         elif self.pbtype in ['BYTES', 'STRING'] and self.allocation != 'STATIC':
@@ -797,7 +815,7 @@ class Message:
         self.ordered_fields.sort()
 
     def get_dependencies(self):
-        '''Get list of type names that this structure refers to.'''
+        '''Get list of type name that this structure refers to.'''
         deps = []
         for f in self.fields:
             deps += f.get_dependencies()
@@ -1007,12 +1025,12 @@ class ProtoFile:
 
     def add_dependency(self, other):
         for enum in other.enums:
-            self.dependencies[str(enum.names)] = enum
+            self.dependencies[str(enum.name)] = enum
 
         for msg in other.messages:
             self.dependencies[str(msg.name)] = msg
 
-        # Fix field default values where enum short names are used.
+        # Fix field default values where enum short name are used.
         for enum in other.enums:
             if not enum.options.long_names:
                 for message in self.messages:
@@ -1026,7 +1044,7 @@ class ProtoFile:
             if not enum.has_negative():
                 for message in self.messages:
                     for field in message.fields:
-                        if field.pbtype == 'ENUM' and field.ctype == enum.names:
+                        if field.pbtype == 'ENUM' and field.ctype == enum.name:
                             field.pbtype = 'UENUM'
 
     def generate_header(self, includes, headername, options):
@@ -1104,6 +1122,13 @@ class ProtoFile:
                 yield extension.tags()
             yield '\n'
 
+            if self.enums is not None:
+                yield '/* Enum lookup tables for nanopb json support */\n'
+                yield '#ifndef PB_NO_JSON\n'
+                for enum in self.enums:
+                    yield enum.lookup_declaration() + '\n'
+                yield '#endif //#ifndef PB_NO_JSON\n\n'
+            
             yield '/* Struct field encoding specification for nanopb */\n'
             for msg in self.messages:
                 yield msg.fields_declaration() + '\n'
@@ -1172,6 +1197,14 @@ class ProtoFile:
 
         yield '\n\n'
 
+        if self.enums is not None:
+            yield '#ifndef PB_NO_JSON\n'
+            
+            for enum in self.enums:
+                yield enum.generate_name_lookup() + '\n\n'
+                
+            yield '#endif //#ifndef PB_NO_JSON\n\n'
+        
         for msg in self.messages:
             yield msg.fields_definition() + '\n\n'
 
@@ -1436,7 +1469,7 @@ def process_file(filename, fdesc, options, other_files = {}):
         if dep in other_files:
             f.add_dependency(other_files[dep])
 
-    # Decide the file names
+    # Decide the file name
     noext = os.path.splitext(filename)[0]
     headername = noext + options.extension + '.h'
     sourcename = noext + options.extension + '.c'
@@ -1456,7 +1489,7 @@ def process_file(filename, fdesc, options, other_files = {}):
         sys.stderr.write("Following patterns in " + f.optfilename + " did not match any fields: "
                          + ', '.join(unmatched) + "\n")
         if not Globals.verbose_options:
-            sys.stderr.write("Use  protoc --nanopb-out=-v:.   to see a list of the field names.\n")
+            sys.stderr.write("Use  protoc --nanopb-out=-v:.   to see a list of the field name.\n")
 
     return {'headername': headername, 'headerdata': headerdata,
             'sourcename': sourcename, 'sourcedata': sourcedata}

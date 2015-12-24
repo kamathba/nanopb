@@ -41,6 +41,12 @@
  * This was the default until nanopb-0.2.1. */
 /* #define PB_OLD_CALLBACK_STYLE */
 
+/* Turn off support for encoding to/from canonical json */
+#define PB_NO_JSON 1
+/* #define PB_JSON_DEFAULT_FORMATTING 1 */
+/* #define PB_JSON_STRICT */
+
+
 
 /******************************************************************
  * You usually don't need to change anything below this line.     *
@@ -75,6 +81,9 @@
 #include <stdlib.h>
 #endif
 #endif
+
+/* Macro for defining API as DLL*/
+#define NANOPB_API
 
 /* Macro for defining packed structures (compiler dependent).
  * This just reduces memory requirements, but is not required.
@@ -149,33 +158,34 @@ typedef uint8_t pb_type_t;
 /**** Field data types ****/
 
 /* Numeric types */
-#define PB_LTYPE_VARINT  0x00 /* int32, int64, enum, bool */
-#define PB_LTYPE_UVARINT 0x01 /* uint32, uint64 */
-#define PB_LTYPE_SVARINT 0x02 /* sint32, sint64 */
-#define PB_LTYPE_FIXED32 0x03 /* fixed32, sfixed32, float */
-#define PB_LTYPE_FIXED64 0x04 /* fixed64, sfixed64, double */
+enum PB_LTYPE {
+	PB_LTYPE_VARINT = 0,       /* int32, int64, enum, bool */
+	PB_LTYPE_UVARINT,          /* uint32, uint64 */
+	PB_LTYPE_SVARINT,          /* sint32, sint64 */
+	PB_LTYPE_FIXED32,          /* fixed32, sfixed32, float */
+	PB_LTYPE_FIXED64,          /* fixed64, sfixed64, double */
 
-/* Marker for last packable field type. */
-#define PB_LTYPE_LAST_PACKABLE 0x04
+	/* Marker for last packable field type. */
+	PB_LTYPE_LAST_PACKABLE = PB_LTYPE_FIXED64,
 
-/* Byte array with pre-allocated buffer.
- * data_size is the length of the allocated PB_BYTES_ARRAY structure. */
-#define PB_LTYPE_BYTES 0x05
+	/* Byte array with pre-allocated buffer.
+	 * data_size is the length of the allocated PB_BYTES_ARRAY structure. */
+	PB_LTYPE_BYTES,
 
-/* String with pre-allocated buffer.
- * data_size is the maximum length. */
-#define PB_LTYPE_STRING 0x06
+	/* String with pre-allocated buffer. data_size is the maximum length. */
+	PB_LTYPE_STRING,
 
-/* Submessage
- * submsg_fields is pointer to field descriptions */
-#define PB_LTYPE_SUBMESSAGE 0x07
+	/* submsg_fields is pointer to field descriptions */
+	PB_LTYPE_SUBMESSAGE,
 
-/* Extension pseudo-field
- * The field contains a pointer to pb_extension_t */
-#define PB_LTYPE_EXTENSION 0x08
+	/* Extension pseudo-field
+	 * The field contains a pointer to pb_extension_t */
+	PB_LTYPE_EXTENSION,
 
-/* Number of declared LTYPES */
-#define PB_LTYPES_COUNT 9
+	/* Number of declared LTYPES */
+	PB_LTYPES_COUNT
+};
+
 #define PB_LTYPE_MASK 0x0F
 
 /**** Field repetition rules ****/
@@ -236,6 +246,10 @@ struct pb_field_s {
      * OR default value for all other non-array, non-callback types
      * If null, then field will zeroed. */
     const void *ptr;
+#ifndef PB_NO_JSON
+    pb_type_t jtype;
+    const char * const name; /* Used for json encoding/decoding */
+#endif
 } pb_packed;
 PB_PACKED_STRUCT_END
 
@@ -285,6 +299,8 @@ typedef struct pb_bytes_array_s pb_bytes_array_t;
  *
  * The callback can be null if you want to skip a field.
  */
+typedef struct pb_json_istream_s pb_json_istream_t;
+typedef struct pb_json_ostream_s pb_json_ostream_t;
 typedef struct pb_istream_s pb_istream_t;
 typedef struct pb_ostream_s pb_ostream_t;
 typedef struct pb_callback_s pb_callback_t;
@@ -294,12 +310,16 @@ struct pb_callback_s {
     union {
         bool (*decode)(pb_istream_t *stream, const pb_field_t *field, void *arg);
         bool (*encode)(pb_ostream_t *stream, const pb_field_t *field, const void *arg);
+        bool (*decode_json)(pb_json_istream_t *stream, const pb_field_t *field, void *arg);
+        bool (*encode_json)(pb_json_ostream_t *stream, const pb_field_t *field, const void *arg);
     } funcs;
 #else
     /* New function signature, which allows modifying arg contents in callback. */
     union {
         bool (*decode)(pb_istream_t *stream, const pb_field_t *field, void **arg);
         bool (*encode)(pb_ostream_t *stream, const pb_field_t *field, void * const *arg);
+        bool (*decode_json)(pb_json_istream_t *stream, const pb_field_t *field, void **arg);
+        bool (*encode_json)(pb_json_ostream_t *stream, const pb_field_t *field, void * const *arg);
     } funcs;
 #endif    
     
@@ -314,6 +334,10 @@ typedef enum {
     PB_WT_STRING = 2,
     PB_WT_32BIT  = 5
 } pb_wire_type_t;
+
+#define PB_WT_VARINT_MAX_SIZE_BYTES 10
+#define PB_WT_64BIT_MAX_SIZE_BYTES 8
+#define PB_WT_32BIT_MAX_SIZE_BYTES 4
 
 /* Structure for defining the handling of unknown/extension fields.
  * Usually the pb_extension_type_t structure is automatically generated,
@@ -378,6 +402,60 @@ struct pb_extension_s {
 /* This is used to inform about need to regenerate .pb.h/.pb.c files. */
 #define PB_PROTO_HEADER_VERSION 30
 
+/* Helper macro to stringify a macro post-expansion */
+#define pb_str(x) #x
+
+/* This macro will allow you to turn on/off json decoding and
+ * encoding without regenerating the .pb.c/h files */
+typedef struct pb_enum_lookup_s pb_enum_lookup_t;
+
+#ifndef PB_NO_JSON
+
+#define pb_fields(ptr, jtype, name) ptr, jtype, name
+
+#define PB_ENUM_NAMES(base) base##_names
+#define PB_LAST_ENUM_LOOKUP {0, NULL}
+
+/* LTYPE does not contain enough information to parse/encode json */
+enum PB_JTYPE {
+	PB_JTYPE_STRING = 0,
+	PB_JTYPE_INT,
+	PB_JTYPE_FLOAT,
+	PB_JTYPE_BOOL,
+	PB_JTYPE_ENUM,
+	PB_JTYPE_OTHER,
+	PB_JTYPES_COUNT,
+};
+
+/* The mapping from protobuf types to LTYPEs is done using these macros. */
+#define PB_JTYPE_MAP_BOOL       PB_JTYPE_BOOL
+#define PB_JTYPE_MAP_BYTES      PB_JTYPE_STRING
+#define PB_JTYPE_MAP_DOUBLE     PB_JTYPE_FLOAT
+#define PB_JTYPE_MAP_ENUM       PB_JTYPE_ENUM
+#define PB_JTYPE_MAP_UENUM      PB_JTYPE_ENUM
+#define PB_JTYPE_MAP_FIXED32    PB_JTYPE_INT
+#define PB_JTYPE_MAP_FIXED64    PB_JTYPE_INT
+#define PB_JTYPE_MAP_FLOAT      PB_JTYPE_FLOAT
+#define PB_JTYPE_MAP_INT32      PB_JTYPE_INT
+#define PB_JTYPE_MAP_INT64      PB_JTYPE_INT
+#define PB_JTYPE_MAP_MESSAGE    PB_JTYPE_OTHER
+#define PB_JTYPE_MAP_SFIXED32   PB_JTYPE_INT
+#define PB_JTYPE_MAP_SFIXED64   PB_JTYPE_INT
+#define PB_JTYPE_MAP_SINT32     PB_JTYPE_INT
+#define PB_JTYPE_MAP_SINT64     PB_JTYPE_INT
+#define PB_JTYPE_MAP_STRING     PB_JTYPE_STRING
+#define PB_JTYPE_MAP_UINT32     PB_JTYPE_INT
+#define PB_JTYPE_MAP_UINT64     PB_JTYPE_INT
+#define PB_JTYPE_MAP_EXTENSION  PB_JTYPE_OTHER
+
+#else
+
+#define pb_fields(ptr, jtype, name) ptr
+
+#define PB_ENUM_NAMES(base) 0
+
+#endif
+
 /* These macros are used to declare pb_field_t's in the constant array. */
 /* Size of a structure member, in bytes. */
 #define pb_membersize(st, m) (sizeof ((st*)0)->m)
@@ -386,7 +464,7 @@ struct pb_extension_s {
 /* Delta from start of one member to the start of another member. */
 #define pb_delta(st, m1, m2) ((int)offsetof(st, m1) - (int)offsetof(st, m2))
 /* Marks the end of the field list */
-#define PB_LAST_FIELD {0,(pb_type_t) 0,0,0,0,0,0}
+#define PB_LAST_FIELD {0,(pb_type_t) 0,0,0,0,0,pb_fields(0, 0, 0)}
 
 /* Macros for filling in the data_offset field */
 /* data_offset for first field in a message */
@@ -502,7 +580,7 @@ struct pb_extension_s {
 #define PB_FIELD(tag, type, rules, allocation, placement, message, field, prevfield, ptr) \
         PB_ ## rules ## _ ## allocation(tag, message, field, \
         PB_DATAOFFSET_ ## placement(message, field, prevfield), \
-        PB_LTYPE_MAP_ ## type, ptr)
+        PB_LTYPE_MAP_ ## type, pb_fields(ptr, PB_JTYPE_MAP_ ## type, pb_str(field)))
 
 /* Field description for oneof fields. This requires taking into account the
  * union name also, that's why a separate set of macros is needed.
@@ -520,7 +598,7 @@ struct pb_extension_s {
 #define PB_ONEOF_FIELD(union_name, tag, type, rules, allocation, placement, message, field, prevfield, ptr) \
         PB_ONEOF_ ## allocation(union_name, tag, message, field, \
         PB_DATAOFFSET_ ## placement(message, union_name.field, prevfield), \
-        PB_LTYPE_MAP_ ## type, ptr)
+        PB_LTYPE_MAP_ ## type, pb_fields(ptr, PB_JTYPE_MAP_ ## type, pb_str(field)))
 
 #define PB_ANONYMOUS_ONEOF_STATIC(u, tag, st, m, fd, ltype, ptr) \
     {tag, PB_ATYPE_STATIC | PB_HTYPE_ONEOF | ltype, \
@@ -535,7 +613,7 @@ struct pb_extension_s {
 #define PB_ANONYMOUS_ONEOF_FIELD(union_name, tag, type, rules, allocation, placement, message, field, prevfield, ptr) \
         PB_ANONYMOUS_ONEOF_ ## allocation(union_name, tag, message, field, \
         PB_DATAOFFSET_ ## placement(message, field, prevfield), \
-        PB_LTYPE_MAP_ ## type, ptr)
+        PB_LTYPE_MAP_ ## type, pb_fields(ptr, PB_JTYPE_MAP_ ## type, pb_str(field)))
 
 /* These macros are used for giving out error messages.
  * They are mostly a debugging aid; the main error information
